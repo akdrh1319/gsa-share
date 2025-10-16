@@ -13,18 +13,27 @@ export default function UploadPage() {
 
     const filePath = `${Date.now()}-${file.name}`
 
-    // 1. Supabase Storage에 업로드
-    const { error } = await supabase.storage.from('uploads').upload(filePath, file)
+    // 1️⃣ 업로드
+    const { error: uploadError } = await supabase.storage
+      .from('uploads')
+      .upload(filePath, file)
 
-    if (error) {
-      setMsg('업로드 실패 ❌ ' + error.message)
+    if (uploadError) {
+      setMsg('업로드 실패 ❌ ' + uploadError.message)
       return
     }
 
-    // 2. 다운로드 URL 발급
-    const { data } = supabase.storage.from('uploads').getPublicUrl(filePath)
+    // 2️⃣ 비공개 버킷용 signed URL 발급
+    const { data, error: urlError } = await supabase.storage
+      .from('uploads')
+      .createSignedUrl(filePath, 60 * 60)
 
-    setUrl(data.publicUrl)
+    if (urlError) {
+      setMsg('URL 생성 실패 ❌ ' + urlError.message)
+      return
+    }
+
+    setUrl(data.signedUrl)
     setMsg('업로드 성공 ✅')
   }
 
@@ -42,4 +51,16 @@ export default function UploadPage() {
       )}
     </div>
   )
+}
+
+// 3️⃣ DB에 파일 메타데이터 저장
+const { error: dbError } = await supabase.from('files').insert({
+  user_id: (await supabase.auth.getUser()).data.user?.id,
+  filename: file.name,
+  url: data.signedUrl
+})
+
+if (dbError) {
+  console.error(dbError)
+  setMsg('DB 저장 실패 ❌ ' + dbError.message)
 }
