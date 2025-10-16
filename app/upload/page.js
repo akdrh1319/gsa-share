@@ -1,4 +1,4 @@
-'use client'  // 🔥 클라이언트 전용으로 강제 (빌드 중 실행 안 함)
+'use client'
 
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
@@ -8,7 +8,6 @@ export default function UploadPage() {
   const [url, setUrl] = useState('')
   const [msg, setMsg] = useState('')
 
-  // 🔹 업로드 함수: file이 있을 때만 실행
   const handleUpload = async () => {
     if (!file) {
       setMsg('파일을 선택하세요.')
@@ -18,7 +17,7 @@ export default function UploadPage() {
     try {
       const filePath = `${Date.now()}-${file.name}`
 
-      // 1️⃣ Supabase Storage 업로드
+      // 1️⃣ Supabase Storage에 파일 업로드
       const { error: uploadError } = await supabase.storage
         .from('uploads')
         .upload(filePath, file)
@@ -28,7 +27,7 @@ export default function UploadPage() {
         return
       }
 
-      // 2️⃣ 비공개 버킷용 signed URL 발급 (1시간 유효)
+      // 2️⃣ 비공개 버킷용 signed URL 생성 (1시간 유효)
       const { data, error: urlError } = await supabase.storage
         .from('uploads')
         .createSignedUrl(filePath, 60 * 60)
@@ -39,16 +38,43 @@ export default function UploadPage() {
       }
 
       setUrl(data.signedUrl)
+
+      // 3️⃣ 현재 로그인된 사용자 정보 가져오기
+      const {
+        data: userData,
+        error: userError
+      } = await supabase.auth.getUser()
+
+      if (userError) {
+        console.error(userError)
+        setMsg('유저 정보 불러오기 실패 ❌')
+        return
+      }
+
+      // 4️⃣ DB에 파일 정보 저장
+      const { error: dbError } = await supabase.from('files').insert({
+        user_id: userData.user.id,
+        filename: file.name,
+        url: data.signedUrl
+      })
+
+      if (dbError) {
+        console.error(dbError)
+        setMsg('DB 저장 실패 ❌ ' + dbError.message)
+        return
+      }
+
       setMsg('업로드 성공 ✅')
     } catch (err) {
-      setMsg('오류 발생 ❌ ' + err.message)
       console.error(err)
+      setMsg('오류 발생 ❌ ' + err.message)
     }
   }
 
   return (
     <div style={{ padding: 20 }}>
       <h1>자료 업로드</h1>
+
       <input
         type="file"
         onChange={(e) => setFile(e.target.files?.[0] || null)}
